@@ -1,0 +1,8 @@
+pyproject.toml
+snake_env/__init__.py
+snake_env/snake.py
+snake_gymnasium_env.egg-info/PKG-INFO
+snake_gymnasium_env.egg-info/SOURCES.txt
+snake_gymnasium_env.egg-info/dependency_links.txt
+snake_gymnasium_env.egg-info/requires.txt
+snake_gymnasium_env.egg-info/top_level.txt

@@ -1,0 +1,10 @@
+# Snake Gymnasium environment
+gymnasium>=1.0
+numpy>=1.24
+pygame>=2.5
+
+# DDQN training and plotting
+torch>=2.0
+matplotlib>=3.7
+PyYAML>=6.0
+flappy-bird-gymnasium>=0.4

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snake-gymnasium-env"
+version = "0.1.0"
+description = "A custom Snake environment for Gymnasium"
+requires-python = ">=3.10"
+dependencies = [
+    "gymnasium>=1.0",
+    "numpy>=1.24",
+    "pygame>=2.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+include = ["snake_env*"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"

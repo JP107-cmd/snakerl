@@ -1,0 +1,5 @@
+/runs
+/build
+/__pycache__
+/.vscode
+/snake_env/__pycache__
