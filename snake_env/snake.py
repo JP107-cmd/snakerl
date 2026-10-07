@@ -7,7 +7,7 @@ from gymnasium import spaces
 class SnakeEnv(gymnasium.Env):
     """A small Snake environment with relative left/straight/right actions."""
 
-    metadata = {"render_modes": ["human"], "render_fps": 10}
+    metadata = {"render_modes": ["human"], "render_fps": 20}
 
     # 0 = up, 1 = right, 2 = down, 3 = left.
     DIRECTION_VECTORS = (

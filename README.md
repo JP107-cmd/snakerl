@@ -67,4 +67,12 @@ python agent.py snake1
 
 Training logs, saved models, and graphs are written to the `runs/` directory.
 
+Provided in this repository is snakebest.pt, which is the best model so far.
+
+To run it:
+
+```bash
+python agent.py snakebest
+```
+
 Thank you for viewing this repo!

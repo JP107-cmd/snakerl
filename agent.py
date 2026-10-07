@@ -135,8 +135,9 @@ class Agent:
                 new_state = torch.tensor(new_state, dtype=torch.float, device=device)
                 reward = torch.tensor(reward, dtype=torch.float, device=device)
 
+                done = terminated or truncated
                 if is_training:
-                    memory.append((state, action, new_state, reward, terminated))
+                    memory.append((state, action, new_state, reward, done))
                     step_count += 1
 
                 # move to new state
