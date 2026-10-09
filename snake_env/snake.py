@@ -20,7 +20,7 @@ class SnakeEnv(gymnasium.Env):
     # 0 = turn left, 1 = go straight, 2 = turn right.
     TURN_OFFSETS = (-1, 0, 1)
 
-    def __init__(self, size=15, render_mode=None, max_steps=10000):
+    def __init__(self, size=15, render_mode=None, max_steps=10000, expanded_obs_space=False):
         if size < 5:
             raise ValueError("size must be at least 5")
         if render_mode not in self.metadata["render_modes"] + [None]:
@@ -31,12 +31,21 @@ class SnakeEnv(gymnasium.Env):
         self.max_steps = max_steps or size * size * 4
 
         self.action_space = spaces.Discrete(3)
-        self.observation_space = spaces.Box(
-            low=np.array([0, 0, 0, 0, 0], dtype=np.float32),
-            high=np.array([3, 3, 1, 1, 1], dtype=np.float32),
-            dtype=np.float32,
-        )
+        if expanded_obs_space:
+            self.observation_space = spaces.Box(
+                low=0.0,
+                high=1.0,
+                shape=(3 * 5 * 5 + 4 + 4,),
+                dtype=np.float32,
+            )
+        else:    
+            self.observation_space = spaces.Box(
+                low=np.array([0, 0, 0, 0, 0], dtype=np.float32),
+                high=np.array([3, 3, 1, 1, 1], dtype=np.float32),
+                dtype=np.float32,
+            )
 
+        self.expanded_obs_space = expanded_obs_space
         self.window_size = 720
         self.window = None
         self.clock = None
@@ -116,10 +125,48 @@ class SnakeEnv(gymnasium.Env):
         return danger
 
     def _get_obs(self):
-        return np.array(
-            [self.direction, self._food_direction(), *self._danger()],
-            dtype=np.float32,
-        )
+        if not self.expanded_obs_space:
+            return np.array(
+                [self.direction, self._food_direction(), *self._danger()],
+                dtype=np.float32,
+            )
+        else:
+            grid = self.get5x5()
+
+            direction_one_hot = np.eye(4, dtype=np.float32)[self.direction]
+            food_direction_one_hot = np.eye(
+                4, dtype=np.float32
+            )[self._food_direction()]
+            return np.concatenate([
+                grid.flatten(),
+                direction_one_hot,
+                food_direction_one_hot,
+            ]).astype(np.float32)
+
+    def get5x5(self):
+        observation = np.zeros((3, 5, 5), dtype=np.float32)
+
+        for local_x in range(5):
+            for local_y in range(5):
+
+                x = self.agent_head_x + local_x - 2
+                y = self.agent_head_y + local_y -2
+                outside = (
+                    x < 0 or x >= self.size or 
+                    y < 0 or y >= self.size
+                )
+                
+                if outside:
+                    observation[2, local_x, local_y] = 1.0
+                    continue
+
+                if [x, y] in self.body:
+                    observation[0, local_x, local_y] = 1.0
+
+                if x == self.food_x and y == self.food_y:
+                    observation[1, local_x, local_y] = 1.0
+
+        return observation
 
     def _get_info(self):
         return {
