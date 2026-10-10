@@ -33,9 +33,9 @@ class SnakeEnv(gymnasium.Env):
         self.action_space = spaces.Discrete(3)
         if expanded_obs_space:
             self.observation_space = spaces.Box(
-                low=0.0,
+                low=-1.0,
                 high=1.0,
-                shape=(3 * 5 * 5 + 4 + 4,),
+                shape=(3 * 7 * 7 + 4 + 4 + 2,),
                 dtype=np.float32,
             )
         else:    
@@ -103,6 +103,15 @@ class SnakeEnv(gymnasium.Env):
             return 1 if dy > 0 else 3
         return 0
 
+    def _food_vector(self):
+
+        if self.food_x is None:
+            return np.zeros(2, dtype=np.float32)
+
+        dx = (self.food_x-self.agent_head_x)/(self.size-1)
+        dy = (self.food_y-self.agent_head_y)/(self.size-1)
+        return np.array([dx, dy], dtype=np.float32)
+
     def _danger(self):
         relative_directions = (
             (self.direction - 1) % 4,  # left
@@ -131,31 +140,32 @@ class SnakeEnv(gymnasium.Env):
                 dtype=np.float32,
             )
         else:
-            grid = self.get5x5()
-
+            grid = self._get7x7()
             direction_one_hot = np.eye(4, dtype=np.float32)[self.direction]
             food_direction_one_hot = np.eye(
                 4, dtype=np.float32
             )[self._food_direction()]
+            normalized_food_direction = self._food_vector()
             return np.concatenate([
                 grid.flatten(),
                 direction_one_hot,
                 food_direction_one_hot,
+                normalized_food_direction
             ]).astype(np.float32)
 
-    def get5x5(self):
-        observation = np.zeros((3, 5, 5), dtype=np.float32)
+    def _get7x7(self):
+        observation = np.zeros((3, 7, 7), dtype=np.float32)
 
-        for local_x in range(5):
-            for local_y in range(5):
+        for local_x in range(7):
+            for local_y in range(7):
 
-                x = self.agent_head_x + local_x - 2
-                y = self.agent_head_y + local_y -2
+                x = self.agent_head_x + local_x - 3
+                y = self.agent_head_y + local_y - 3
                 outside = (
                     x < 0 or x >= self.size or 
                     y < 0 or y >= self.size
                 )
-                
+
                 if outside:
                     observation[2, local_x, local_y] = 1.0
                     continue
@@ -317,13 +327,6 @@ class SnakeEnv(gymnasium.Env):
 
 
 if __name__ == "__main__":
-    env = SnakeEnv(render_mode="human")
+    env = SnakeEnv(render_mode="human", expanded_obs_space=True)
     observation, _ = env.reset()
-    terminated = truncated = False
-
-    try:
-        while not (terminated or truncated):
-            action = env.action_space.sample()
-            observation, reward, terminated, truncated, info = env.step(action)
-    finally:
-        env.close()
+    print(env._get_obs())
