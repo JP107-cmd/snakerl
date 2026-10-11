@@ -1,4 +1,5 @@
 import gymnasium
+from gymnasium import envs
 import numpy as np
 
 import matplotlib
@@ -13,7 +14,8 @@ from experience_replay import ReplayMemory
 from dqn import DQN
 from cnn import CNN
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
+import time
 import argparse
 import itertools
 import snake_env
@@ -62,60 +64,187 @@ class Agent:
         self.optimizer = None
 
         # Path to Run info
-        suffix = "_cnn" if self.use_cnn else "_mlp"
+        suffix = "_cnn" if self.use_cnn else ""
         self.LOG_FILE   = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}{suffix}.log')
         self.MODEL_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}{suffix}.pt')
         self.GRAPH_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}{suffix}.png')
 
+    def train(self, render=False):
 
+        start_time = datetime.now()
+        last_graph_update_time = start_time
 
+        log_message = f"{start_time.strftime(DATE_FORMAT)}: Training starting..."
+        print(log_message)
+        with open(self.LOG_FILE, 'w') as file:
+            file.write(log_message + '\n')
 
-    def run(self, is_training=True, render=False):
+        envs = gymnasium.vector.SyncVectorEnv(
+            [lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn),
+             lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn),
+             lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn),
+             lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn)]
+        )
 
-        if is_training:
-            start_time = datetime.now()
-            last_graph_update_time = start_time
-
-            log_message = f"{start_time.strftime(DATE_FORMAT)}: Training starting..."
-            print(log_message)
-            with open(self.LOG_FILE, 'w') as file:
-                file.write(log_message + '\n')
-
-        env = gymnasium.make(self.env_id, render_mode='human' if render else None, **self.env_make_params, cnn=self.use_cnn)
-
-        num_states = env.observation_space.shape[0]
-        num_actions = env.action_space.n
+        observation_shape = envs.single_observation_space.shape
+        num_envs = envs.num_envs
+        num_states = observation_shape[0]
+        num_actions = envs.single_action_space.n
         rewards_per_episode = []
+        scores_per_episode = []
 
         if self.use_cnn:
-            policy_dqn = CNN(env.observation_space.shape, num_actions).to(device)
+            policy_dqn = CNN(observation_shape, num_actions).to(device)
         else:
             policy_dqn = DQN(num_states, num_actions, self.nodes).to(device)
 
-        if is_training:
-            memory = ReplayMemory(self.replay_memory_size)
+        memory = ReplayMemory(self.replay_memory_size)
 
-            epsilon = self.epsilon_init
+        epsilon = self.epsilon_init
 
-            if self.use_cnn:
-                target_dqn = CNN(env.observation_space.shape, num_actions).to(device)
-            else:
-                target_dqn = DQN(num_states, num_actions, self.nodes).to(device)
-            target_dqn.load_state_dict(policy_dqn.state_dict())
-
-            epsilon_history = []
-
-            self.optimizer = torch.optim.Adam(policy_dqn.parameters(), lr=self.learning_rate_a)
-
-            best_reward = -9999999
-
+        if self.use_cnn:
+            target_dqn = CNN(observation_shape, num_actions).to(device)
         else:
+            target_dqn = DQN(num_states, num_actions, self.nodes).to(device)
+        target_dqn.load_state_dict(policy_dqn.state_dict())
 
-            policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
+        epsilon_history = []
 
-            policy_dqn.eval()
+        self.optimizer = torch.optim.Adam(policy_dqn.parameters(), lr=self.learning_rate_a)
+
+        best_reward = -9999999
 
         step_count = 0
+        completed_episodes = 0
+        episode_rewards = np.zeros(num_envs, dtype=np.float32)
+        states, _ = envs.reset()
+
+        for vector_step in itertools.count():
+            states_tensor = torch.tensor(
+                states,
+                dtype=torch.float,
+                device=device,
+            )
+
+            random_mask = np.random.random(num_envs) < epsilon
+
+            if random_mask.all():
+                actions = envs.action_space.sample()
+            else:
+                with torch.no_grad():
+                    greedy_actions = (
+                        policy_dqn(states_tensor)
+                        .argmax(dim=1)
+                        .cpu()
+                        .numpy()
+                    )
+
+                actions = envs.action_space.sample()
+                actions[~random_mask] = greedy_actions[~random_mask]
+
+            new_states, rewards, terminations, truncations, infos = envs.step(actions)
+            dones = terminations | truncations
+            new_states_tensor = torch.tensor(
+                new_states,
+                dtype=torch.float,
+                device=device,
+            )
+            rewards_tensor = torch.tensor(
+                rewards,
+                dtype=torch.float,
+                device=device,
+            )
+            episode_rewards += rewards
+
+            for i in range(num_envs):
+                action_tensor = torch.tensor(
+                    actions[i],
+                    dtype=torch.int64,
+                    device=device,
+                )
+                memory.append((
+                    states_tensor[i],
+                    action_tensor,
+                    new_states_tensor[i],
+                    rewards_tensor[i],
+                    bool(dones[i]),
+                ))
+
+                if dones[i]:
+                    episode_reward = float(episode_rewards[i])
+                    score_values = infos.get("score")
+                    score = (
+                        float(score_values[i])
+                        if score_values is not None else 0.0
+                    )
+                    rewards_per_episode.append(episode_reward)
+                    scores_per_episode.append(score)
+                    completed_episodes += 1
+                    episode_rewards[i] = 0.0
+
+                    if episode_reward > best_reward:
+                        log_message = (
+                            f"{datetime.now().strftime(DATE_FORMAT)}: "
+                            f"New best reward {episode_reward:0.1f} at episode "
+                            f"{completed_episodes} with score {score:0.1f}, "
+                            "saving model..."
+                        )
+                        print(log_message)
+                        with open(self.LOG_FILE, 'a') as file:
+                            file.write(log_message + '\n')
+
+                        torch.save(policy_dqn.state_dict(), self.MODEL_FILE)
+                        best_reward = episode_reward
+                    elif completed_episodes % 500 == 0:
+                        log_message = (
+                            f"{datetime.now().strftime(DATE_FORMAT)}: Reward "
+                            f"{episode_reward:0.1f} at episode "
+                            f"{completed_episodes} with score {score:0.1f}, "
+                            "saving model..."
+                        )
+                        print(log_message)
+                        with open(self.LOG_FILE, 'a') as file:
+                            file.write(log_message + '\n')
+
+                        torch.save(policy_dqn.state_dict(), self.MODEL_FILE)
+
+            states = new_states
+            step_count += num_envs
+
+            if len(memory) >= self.mini_batch_size:
+                mini_batch = memory.sample(self.mini_batch_size)
+                self.optimize(mini_batch, policy_dqn, target_dqn)
+
+                # Decay once per individual environment transition.
+                epsilon = max(
+                    epsilon * (self.epsilon_decay ** num_envs),
+                    self.epsilon_min,
+                )
+                epsilon_history.append(epsilon)
+
+                if step_count >= self.network_sync_rate:
+                    target_dqn.load_state_dict(policy_dqn.state_dict())
+                    step_count = 0
+
+            current_time = datetime.now()
+            if current_time - last_graph_update_time > timedelta(seconds=10):
+                self.save_graph(
+                    rewards_per_episode,
+                    epsilon_history,
+                    scores_per_episode,
+                )
+                last_graph_update_time = current_time
+
+    def test(self, render=False):
+        env = gymnasium.make(self.env_id, render_mode="human", **self.env_make_params, cnn=self.use_cnn)
+
+        num_states = env.observation_space.shape[0]
+        num_actions = env.action_space.n
+
+        if self.use_cnn:
+            policy_dqn = DQN(num_states, num_actions, self.nodes).to(device)
+
+        policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
 
         for episode in itertools.count():
 
@@ -128,73 +257,26 @@ class Agent:
 
             while not (terminated or truncated):
 
-                if is_training and random.random() < epsilon:
-                    action = env.action_space.sample()
-                    action = torch.tensor(action, dtype=torch.int64, device=device)
-                else:
-                    with torch.no_grad():
-                       action = policy_dqn(state.unsqueeze(dim=0)).squeeze().argmax()
+                with torch.no_grad():
+                    action = policy_dqn(state.unsqueeze(dim=0)).squeeze().argmax()
 
-                # Processing:
                 new_state, reward, terminated, truncated, info = env.step(int(action.item()))
+                score = info.get("score", 0)
 
                 # Accumulate reward
                 episode_reward += reward
 
                 new_state = torch.tensor(new_state, dtype=torch.float, device=device)
-                reward = torch.tensor(reward, dtype=torch.float, device=device)
-
-                done = terminated or truncated
-                if is_training:
-                    memory.append((state, action, new_state, reward, done))
-                    step_count += 1
 
                 # move to new state
                 state = new_state
 
-            rewards_per_episode.append(episode_reward)
+            log_message = f"{datetime.now().strftime(DATE_FORMAT)}: Reward {episode_reward:0.1f} at episode {episode} with score {score:0.1f}"
+            print(log_message)
+            with open(self.LOG_FILE, 'a') as file:
+                file.write(log_message + '\n')
 
-
-            # Save model when new best reward is obtained.
-            if is_training:
-                if episode_reward > best_reward:
-                    log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} ({(episode_reward-best_reward)/best_reward*100:+.1f}%) at episode {episode}, saving model..."
-                    print(log_message)
-                    with open(self.LOG_FILE, 'a') as file:
-                        file.write(log_message + '\n')
-
-                    torch.save(policy_dqn.state_dict(), self.MODEL_FILE)
-                    best_reward = episode_reward
-                elif len(epsilon_history) % 500 == 0:
-                    log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New reward {episode_reward:0.1f} at episode {episode}, saving model..."
-                    print(log_message)
-                    with open(self.LOG_FILE, 'a') as file:
-                        file.write(log_message + '\n')
-
-                    torch.save(policy_dqn.state_dict(), self.MODEL_FILE)
-
-                # Update graph every x seconds
-                current_time = datetime.now()
-                if current_time - last_graph_update_time > timedelta(seconds=10):
-                    self.save_graph(rewards_per_episode, epsilon_history)
-                    last_graph_update_time = current_time
-            
-
-                if len(memory)>self.mini_batch_size:
-
-                    #Sample from memory
-                    mini_batch = memory.sample(self.mini_batch_size)
-                    self.optimize(mini_batch, policy_dqn, target_dqn)
-
-                    epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
-                    epsilon_history.append(epsilon)
-
-                    # Copy policy to target network after certain number of steps
-                    if step_count > self.network_sync_rate:
-                        target_dqn.load_state_dict(policy_dqn.state_dict())
-                        step_count = 0
-
-    def save_graph(self, rewards_per_episode, epsilon_history):
+    def save_graph(self, rewards_per_episode, epsilon_history, scores_per_episode):
         # Save plots
         fig = plt.figure(1)
 
@@ -202,16 +284,20 @@ class Agent:
         mean_rewards = np.zeros(len(rewards_per_episode))
         for x in range(len(mean_rewards)):
             mean_rewards[x] = np.mean(rewards_per_episode[max(0, x-99):(x+1)])
-        plt.subplot(121) # plot on a 1 row x 2 col grid, at cell 1
+        plt.subplot(131) # plot on a 1 row x 3 col grid, at cell 1
         # plt.xlabel('Episodes')
         plt.ylabel('Mean Rewards')
         plt.plot(mean_rewards)
 
         # Plot epsilon decay (Y-axis) vs episodes (X-axis)
-        plt.subplot(122) # plot on a 1 row x 2 col grid, at cell 2
+        plt.subplot(132) # plot on a 1 row x 3 col grid, at cell 2
         # plt.xlabel('Time Steps')
         plt.ylabel('Epsilon Decay')
         plt.plot(epsilon_history)
+
+        plt.subplot(133) # plot on a 1 row x 3 col grid, at cell 3
+        plt.ylabel('Scores')
+        plt.plot(scores_per_episode)
 
         plt.subplots_adjust(wspace=1.0, hspace=1.0)
 
@@ -265,6 +351,6 @@ if __name__ == "__main__":
         dql = Agent(hyperparameter_set=args.hyperparameters, use_cnn=False)
 
     if args.train:
-        dql.run(is_training=True)
+        dql.train(render=False)
     else:
-        dql.run(is_training=False, render=True)
+        dql.test(render=True)

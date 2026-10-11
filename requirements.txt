@@ -7,4 +7,3 @@ pygame>=2.5
 torch>=2.0
 matplotlib>=3.7
 PyYAML>=6.0
-flappy-bird-gymnasium>=0.4

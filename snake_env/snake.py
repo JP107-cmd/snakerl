@@ -218,8 +218,7 @@ class SnakeEnv(gymnasium.Env):
         self.won = False
         self.state = np.zeros((self.size, self.size), dtype=np.int8)
 
-        self.food_x = min(center + 6, self.size - 2)
-        self.food_y = center
+        self._spawn_food()
         self._rebuild_state()
 
         if self.render_mode == "human":

@@ -90,5 +90,3 @@ snakev3-0:
   stop_on_reward: 200
   nodes: 256
   enable_double_dqn: True
-  env_make_params:
-    expanded_obs_space: True
