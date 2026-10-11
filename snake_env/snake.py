@@ -20,18 +20,26 @@ class SnakeEnv(gymnasium.Env):
     # 0 = turn left, 1 = go straight, 2 = turn right.
     TURN_OFFSETS = (-1, 0, 1)
 
-    def __init__(self, size=15, render_mode=None, max_steps=10000, expanded_obs_space=False):
+    def __init__(self, size=15, render_mode=None, max_steps=10000, expanded_obs_space=False, cnn=False):
         if size < 5:
             raise ValueError("size must be at least 5")
         if render_mode not in self.metadata["render_modes"] + [None]:
             raise ValueError(f"Unsupported render mode: {render_mode}")
 
+        self.cnn = cnn
         self.size = size
         self.render_mode = render_mode
         self.max_steps = max_steps or size * size * 4
 
         self.action_space = spaces.Discrete(3)
-        if expanded_obs_space:
+        if cnn:
+            self.observation_space = spaces.Box(
+                low=0,
+                high=1.0,
+                shape=(3, self.size, self.size),
+                dtype=np.float32,
+            )
+        elif expanded_obs_space:
             self.observation_space = spaces.Box(
                 low=-1.0,
                 high=1.0,
@@ -134,7 +142,14 @@ class SnakeEnv(gymnasium.Env):
         return danger
 
     def _get_obs(self):
-        if not self.expanded_obs_space:
+        if self.cnn:
+            grid = np.stack([
+                self.state == 2,
+                self.state == 1,
+                self.state == 3
+            ]).astype(np.float32)
+            return grid
+        elif not self.expanded_obs_space:
             return np.array(
                 [self.direction, self._food_direction(), *self._danger()],
                 dtype=np.float32,

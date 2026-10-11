@@ -11,6 +11,7 @@ import yaml
 
 from experience_replay import ReplayMemory
 from dqn import DQN
+from cnn import CNN
 
 from datetime import datetime, timedelta
 import argparse
@@ -35,12 +36,13 @@ device = torch.device(
 
 class Agent:
 
-    def __init__(self, hyperparameter_set):
+    def __init__(self, hyperparameter_set, use_cnn=False):
         with open('hyperparameters.yml', 'r') as file:
             all_hyperparameter_sets = yaml.safe_load(file)
             hyperparameters = all_hyperparameter_sets[hyperparameter_set]
 
         self.hyperparameter_set = hyperparameter_set
+        self.use_cnn = use_cnn
 
         self.env_id = hyperparameters["env_id"]
         self.replay_memory_size = hyperparameters["replay_memory_size"]
@@ -60,9 +62,10 @@ class Agent:
         self.optimizer = None
 
         # Path to Run info
-        self.LOG_FILE   = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}.log')
-        self.MODEL_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}.pt')
-        self.GRAPH_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}.png')
+        suffix = "_cnn" if self.use_cnn else "_mlp"
+        self.LOG_FILE   = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}{suffix}.log')
+        self.MODEL_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}{suffix}.pt')
+        self.GRAPH_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}{suffix}.png')
 
 
 
@@ -78,20 +81,26 @@ class Agent:
             with open(self.LOG_FILE, 'w') as file:
                 file.write(log_message + '\n')
 
-        env = gymnasium.make(self.env_id, render_mode='human' if render else None, **self.env_make_params)
+        env = gymnasium.make(self.env_id, render_mode='human' if render else None, **self.env_make_params, cnn=self.use_cnn)
 
         num_states = env.observation_space.shape[0]
         num_actions = env.action_space.n
         rewards_per_episode = []
 
-        policy_dqn = DQN(num_states, num_actions, self.nodes).to(device)
+        if self.use_cnn:
+            policy_dqn = CNN(env.observation_space.shape, num_actions).to(device)
+        else:
+            policy_dqn = DQN(num_states, num_actions, self.nodes).to(device)
 
         if is_training:
             memory = ReplayMemory(self.replay_memory_size)
 
             epsilon = self.epsilon_init
 
-            target_dqn = DQN(num_states, num_actions, self.nodes).to(device)
+            if self.use_cnn:
+                target_dqn = CNN(env.observation_space.shape, num_actions).to(device)
+            else:
+                target_dqn = DQN(num_states, num_actions, self.nodes).to(device)
             target_dqn.load_state_dict(policy_dqn.state_dict())
 
             epsilon_history = []
@@ -247,9 +256,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train or test model. ")
     parser.add_argument('hyperparameters', help=' ')
     parser.add_argument("--train", help="Training mode", action="store_true")
+    parser.add_argument("--cnn", help="Use CNN", action="store_true")
     args = parser.parse_args()
 
-    dql = Agent(hyperparameter_set=args.hyperparameters)
+    if args.cnn:
+        dql = Agent(hyperparameter_set=args.hyperparameters, use_cnn=True)
+    else:
+        dql = Agent(hyperparameter_set=args.hyperparameters, use_cnn=False)
 
     if args.train:
         dql.run(is_training=True)
