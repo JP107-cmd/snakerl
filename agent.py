@@ -227,7 +227,7 @@ class Agent:
                     step_count = 0
 
             current_time = datetime.now()
-            if current_time - last_graph_update_time > timedelta(seconds=10):
+            if current_time - last_graph_update_time > timedelta(seconds=20):
                 self.save_graph(
                     rewards_per_episode,
                     epsilon_history,
@@ -236,12 +236,14 @@ class Agent:
                 last_graph_update_time = current_time
 
     def test(self, render=False):
-        env = gymnasium.make(self.env_id, render_mode="human", **self.env_make_params, cnn=self.use_cnn)
+        env = gymnasium.make(self.env_id, render_mode="human" if render else "", **self.env_make_params, cnn=self.use_cnn)
 
         num_states = env.observation_space.shape[0]
         num_actions = env.action_space.n
 
         if self.use_cnn:
+            policy_dqn = CNN(env.observation_space.shape, num_actions).to(device)
+        else:
             policy_dqn = DQN(num_states, num_actions, self.nodes).to(device)
 
         policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
