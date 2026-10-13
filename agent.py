@@ -80,22 +80,22 @@ class Agent:
             file.write(log_message + '\n')
 
         envs = gymnasium.vector.SyncVectorEnv(
-            [lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn),
-             lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn),
-             lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn),
-             lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn)]
+            [lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn, size=15),
+             lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn, size=15),
+             lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn, size=15),
+             lambda: gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn, size=15)]
         )
 
-        observation_shape = envs.single_observation_space.shape
+        observation_shape = envs.observation_space.shape
         num_envs = envs.num_envs
-        num_states = observation_shape[0]
         num_actions = envs.single_action_space.n
         rewards_per_episode = []
         scores_per_episode = []
 
         if self.use_cnn:
-            policy_dqn = CNN(observation_shape, num_actions).to(device)
+            policy_dqn = CNN(observation_shape, 15, num_actions).to(device)
         else:
+            num_states = observation_shape[0]
             policy_dqn = DQN(num_states, num_actions, self.nodes).to(device)
 
         memory = ReplayMemory(self.replay_memory_size)
@@ -103,7 +103,7 @@ class Agent:
         epsilon = self.epsilon_init
 
         if self.use_cnn:
-            target_dqn = CNN(observation_shape, num_actions).to(device)
+            target_dqn = CNN(observation_shape, 15, num_actions).to(device)
         else:
             target_dqn = DQN(num_states, num_actions, self.nodes).to(device)
         target_dqn.load_state_dict(policy_dqn.state_dict())
@@ -128,7 +128,7 @@ class Agent:
 
             random_mask = np.random.random(num_envs) < epsilon
 
-            if random_mask.all():
+            if random_mask.all() or completed_episodes % 500 >= 10 or completed_episodes < 10:
                 actions = envs.action_space.sample()
             else:
                 with torch.no_grad():
@@ -236,13 +236,13 @@ class Agent:
                 last_graph_update_time = current_time
 
     def test(self, render=False):
-        env = gymnasium.make(self.env_id, render_mode="human" if render else "", **self.env_make_params, cnn=self.use_cnn)
+        env = gymnasium.make(self.env_id, render_mode="human" if render else "", **self.env_make_params, cnn=self.use_cnn, size=15)
 
         num_states = env.observation_space.shape[0]
         num_actions = env.action_space.n
 
         if self.use_cnn:
-            policy_dqn = CNN(env.observation_space.shape, num_actions).to(device)
+            policy_dqn = CNN(env.observation_space.shape, 15, num_actions).to(device)
         else:
             policy_dqn = DQN(num_states, num_actions, self.nodes).to(device)
 
@@ -298,8 +298,12 @@ class Agent:
         plt.plot(epsilon_history)
 
         plt.subplot(133) # plot on a 1 row x 3 col grid, at cell 3
-        plt.ylabel('Scores')
-        plt.plot(scores_per_episode)
+        plt.ylabel('MeanScores')
+        mean_scores = np.zeros(len(scores_per_episode))
+        for x in range(len(mean_scores)):
+            mean_scores[x] = np.mean(scores_per_episode[max(0, x-99):(x+1)])
+        plt.subplot(133) # plot on a 1 row x 3 col grid,
+        plt.plot(mean_scores)
 
         plt.subplots_adjust(wspace=1.0, hspace=1.0)
 

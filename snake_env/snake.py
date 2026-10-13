@@ -34,9 +34,9 @@ class SnakeEnv(gymnasium.Env):
         self.action_space = spaces.Discrete(3)
         if cnn:
             self.observation_space = spaces.Box(
-                low=0,
+                low=0.0,
                 high=1.0,
-                shape=(3, self.size, self.size),
+                shape=(3 * self.size * self.size + 4,),
                 dtype=np.float32,
             )
         elif expanded_obs_space:
@@ -143,12 +143,17 @@ class SnakeEnv(gymnasium.Env):
 
     def _get_obs(self):
         if self.cnn:
+            direction_one_hot = np.eye(4, dtype=np.float32)[self.direction]
             grid = np.stack([
                 self.state == 2,
                 self.state == 1,
-                self.state == 3
+                self.state == 3,
             ]).astype(np.float32)
-            return grid
+            observation = np.concatenate([
+                grid.flatten(),
+                direction_one_hot,
+            ])
+            return observation.astype(np.float32)
         elif not self.expanded_obs_space:
             return np.array(
                 [self.direction, self._food_direction(), *self._danger()],
