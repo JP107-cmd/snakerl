@@ -208,23 +208,23 @@ class Agent:
 
                         torch.save(policy_dqn.state_dict(), self.MODEL_FILE)
 
+                    epsilon = max(
+                        epsilon * self.epsilon_decay,
+                        self.epsilon_min,
+                    )
+                    epsilon_history.append(epsilon)
+
+                    if len(memory) >= self.mini_batch_size:
+                        mini_batch = memory.sample(self.mini_batch_size)
+                        self.optimize(mini_batch, policy_dqn, target_dqn)
+
+                        if step_count >= self.network_sync_rate:
+                            target_dqn.load_state_dict(policy_dqn.state_dict())
+                            step_count = 0
+
+            
             states = new_states
             step_count += num_envs
-
-            if len(memory) >= self.mini_batch_size:
-                mini_batch = memory.sample(self.mini_batch_size)
-                self.optimize(mini_batch, policy_dqn, target_dqn)
-
-                # Decay once per individual environment transition.
-                epsilon = max(
-                    epsilon * (self.epsilon_decay ** num_envs),
-                    self.epsilon_min,
-                )
-                epsilon_history.append(epsilon)
-
-                if step_count >= self.network_sync_rate:
-                    target_dqn.load_state_dict(policy_dqn.state_dict())
-                    step_count = 0
 
             current_time = datetime.now()
             if current_time - last_graph_update_time > timedelta(seconds=20):
