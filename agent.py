@@ -93,9 +93,10 @@ class Agent:
         scores_per_episode = []
 
         if self.use_cnn:
-            policy_dqn = CNN(observation_shape, 15, num_actions).to(device)
+            policy_dqn = CNN(observation_shape, 15, num_actions, self.nodes).to(device)
         else:
-            num_states = observation_shape[0]
+            
+            num_states = envs.single_observation_space.shape[0]
             policy_dqn = DQN(num_states, num_actions, self.nodes).to(device)
 
         memory = ReplayMemory(self.replay_memory_size)
@@ -103,7 +104,7 @@ class Agent:
         epsilon = self.epsilon_init
 
         if self.use_cnn:
-            target_dqn = CNN(observation_shape, 15, num_actions).to(device)
+            target_dqn = CNN(observation_shape, 15, num_actions, self.nodes).to(device)
         else:
             target_dqn = DQN(num_states, num_actions, self.nodes).to(device)
         target_dqn.load_state_dict(policy_dqn.state_dict())
@@ -128,7 +129,7 @@ class Agent:
 
             random_mask = np.random.random(num_envs) < epsilon
 
-            if random_mask.all() or completed_episodes % 500 >= 10 or completed_episodes < 10:
+            if random_mask.all():
                 actions = envs.action_space.sample()
             else:
                 with torch.no_grad():
@@ -208,19 +209,19 @@ class Agent:
 
                         torch.save(policy_dqn.state_dict(), self.MODEL_FILE)
 
-                    epsilon = max(
-                        epsilon * self.epsilon_decay,
-                        self.epsilon_min,
-                    )
-                    epsilon_history.append(epsilon)
+            epsilon = max(
+                epsilon * self.epsilon_decay,
+                self.epsilon_min,
+            )
+            epsilon_history.append(epsilon)
 
-                    if len(memory) >= self.mini_batch_size:
-                        mini_batch = memory.sample(self.mini_batch_size)
-                        self.optimize(mini_batch, policy_dqn, target_dqn)
+            if len(memory) >= self.mini_batch_size and vector_step % 10 == 0:
+                mini_batch = memory.sample(self.mini_batch_size)
+                self.optimize(mini_batch, policy_dqn, target_dqn)
 
-                        if step_count >= self.network_sync_rate:
-                            target_dqn.load_state_dict(policy_dqn.state_dict())
-                            step_count = 0
+                if step_count >= self.network_sync_rate:
+                    target_dqn.load_state_dict(policy_dqn.state_dict())
+                    step_count = 0
 
             
             states = new_states
