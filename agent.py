@@ -239,13 +239,13 @@ class Agent:
     def test(self, render=False):
         env = gymnasium.make(self.env_id, render_mode="human" if render else "", **self.env_make_params, cnn=self.use_cnn, size=15)
 
-        num_states = env.observation_space.shape[0]
+        num_states = env.observation_space.shape
         num_actions = env.action_space.n
 
         if self.use_cnn:
-            policy_dqn = CNN(env.observation_space.shape, 15, num_actions).to(device)
+            policy_dqn = CNN(state_shape=num_states, board_size=15, action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
         else:
-            policy_dqn = DQN(num_states, num_actions, self.nodes).to(device)
+            policy_dqn = DQN(state_shape=num_states, action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
 
         policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
 
