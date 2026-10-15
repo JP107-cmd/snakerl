@@ -1,6 +1,5 @@
 /runs/*
 !/runs/snakebest.pt
 /build
-/__pycache__
 /.vscode
-/snake_env/__pycache__
+**/__pycache__

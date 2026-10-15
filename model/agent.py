@@ -1,3 +1,5 @@
+import asyncio
+
 import gymnasium
 from gymnasium import envs
 import numpy as np
@@ -10,9 +12,9 @@ import torch
 from torch import nn
 import yaml
 
-from experience_replay import ReplayMemory
-from dqn import DQN
-from cnn import CNN
+from model.experience_replay import ReplayMemory
+from model.dqn import DQN
+from model.cnn import CNN
 
 from datetime import datetime, time, timedelta
 import time
@@ -20,6 +22,7 @@ import argparse
 import itertools
 import snake_env
 import os
+import json
 
 DATE_FORMAT = "%m-%d %H:%M%S"
 
@@ -278,6 +281,50 @@ class Agent:
             print(log_message)
             with open(self.LOG_FILE, 'a') as file:
                 file.write(log_message + '\n')
+
+    async def display(self):
+        env = gymnasium.make(self.env_id, **self.env_make_params, cnn=self.use_cnn, size=15)
+
+        num_states = env.observation_space.shape
+        num_actions = env.action_space.n
+
+        if self.use_cnn:
+            policy_dqn = CNN(state_shape=num_states, board_size=15, action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
+        else:
+            policy_dqn = DQN(state_shape=num_states, action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
+
+        policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
+
+        for episode in itertools.count():
+
+            state, _ = env.reset()
+            state = torch.tensor(state, dtype=torch.float, device=device)
+
+            terminated = False
+            truncated = False
+            episode_reward = 0.0
+
+            while not (terminated or truncated):
+
+                with torch.no_grad():
+                    action = policy_dqn(state.unsqueeze(dim=0)).squeeze().argmax()
+
+                new_state, reward, terminated, truncated, info = env.step(int(action.item()))
+                score = info.get("score", 0)
+
+                board = env.unwrapped.get_state()
+                board = board.tolist()
+
+                # Accumulate reward
+                episode_reward += reward
+
+                new_state = torch.tensor(new_state, dtype=torch.float, device=device)
+
+                # move to new state
+                state = new_state
+                yield json.dumps(obj=({"board": board, "reward": episode_reward, "score": score})) + "\n"
+                await asyncio.sleep(0.05)
+
 
     def save_graph(self, rewards_per_episode, epsilon_history, scores_per_episode):
         # Save plots

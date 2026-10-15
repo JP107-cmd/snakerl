@@ -338,6 +338,9 @@ class SnakeEnv(gymnasium.Env):
         pygame.display.flip()
         self.clock.tick(self.metadata["render_fps"])
 
+    def get_state(self):
+        return self.state.copy()
+
     def close(self):
         if self.window is not None:
             pygame.quit()
