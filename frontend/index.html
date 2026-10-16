@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>SnakeRL</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: "Avenir Next", Avenir, sans-serif;
+            background: #151a15;
+            color: #edf2e9;
+            font-synthesis: none;
+        }
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            margin: 0;
+            background: repeating-linear-gradient(135deg, #171c17 0 2px, #151a15 2px 8px);
+        }
+        main {
+            width: min(1040px, 100%);
+            margin: 0 auto;
+            padding: 32px 24px 48px;
+        }
+        header {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #394239;
+        }
+        h1 { margin: 0; font-size: 28px; font-weight: 650; }
+        .eyebrow { margin: 0 0 6px; color: #a9b7a3; font-size: 12px; text-transform: uppercase; }
+        .connection { color: #c0cabe; font-size: 13px; }
+        .connection::before {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            margin-right: 8px;
+            border-radius: 50%;
+            background: #879182;
+            content: "";
+        }
+        .connection[data-state="live"]::before { background: #56d364; }
+        .connection[data-state="error"]::before { background: #ef6a5b; }
+        .viewer {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 220px;
+            gap: 28px;
+            align-items: start;
+            padding-top: 28px;
+        }
+        .board-wrap {
+            width: 100%;
+            max-width: 680px;
+            aspect-ratio: 1;
+            padding: 8px;
+            background: #252d25;
+            border: 1px solid #465146;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+        aside { display: grid; gap: 18px; }
+        .stat { padding-bottom: 14px; border-bottom: 1px solid #394239; }
+        .stat-label { color: #a9b7a3; font-size: 12px; text-transform: uppercase; }
+        .stat-value { margin-top: 4px; font-size: 28px; font-variant-numeric: tabular-nums; }
+        button {
+            min-height: 42px;
+            padding: 0 16px;
+            border: 1px solid #82d98b;
+            border-radius: 4px;
+            background: #82d98b;
+            color: #142016;
+            font: inherit;
+            font-weight: 650;
+            cursor: pointer;
+        }
+        button:disabled { cursor: wait; opacity: 0.65; }
+        button.stop { border-color: #657163; background: transparent; color: #edf2e9; }
+        .error { min-height: 40px; margin: 0; color: #ff9b8f; font-size: 13px; overflow-wrap: anywhere; }
+        @media (max-width: 700px) {
+            main { padding: 22px 16px 32px; }
+            .viewer { grid-template-columns: 1fr; gap: 20px; }
+            .board-wrap { margin: 0 auto; }
+            aside { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            aside button, .error { grid-column: 1 / -1; }
+        }
+        @media (prefers-reduced-motion: no-preference) {
+            main { animation: arrive 260ms ease-out both; }
+            @keyframes arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <header>
+            <div>
+                <p class="eyebrow">Live model stream</p>
+                <h1>SnakeRL</h1>
+            </div>
+            <div id="connection" class="connection" data-state="idle" role="status">Disconnected</div>
+        </header>
+        <section class="viewer" aria-label="Live Snake game">
+            <div class="board-wrap">
+                <canvas id="game-board" aria-label="Snake game board"></canvas>
+            </div>
+            <aside>
+                <div class="stat"><div class="stat-label">Score</div><div class="stat-value" id="score">0</div></div>
+                <div class="stat"><div class="stat-label">Episode reward</div><div class="stat-value" id="reward">0.00</div></div>
+                <button id="start" type="button">Start stream</button>
+                <button id="stop" class="stop" type="button" disabled>Stop stream</button>
+                <p id="error" class="error" role="alert"></p>
+            </aside>
+        </section>
+    </main>
+    <script>
+        const API_URL = "http://127.0.0.1:8000/cnn";
+        const colors = ["rgb(0, 200, 0)", "rgb(0, 0, 0)", "rgb(30, 30, 255)", "rgb(200, 0, 0)"];
+        const canvas = document.querySelector("#game-board");
+        const context = canvas.getContext("2d");
+        const connection = document.querySelector("#connection");
+        const startButton = document.querySelector("#start");
+        const stopButton = document.querySelector("#stop");
+        let abortController;
+        let latestBoard;
+
+        function renderBoard(board) {
+            if (!Array.isArray(board) || board.length === 0 || board.some(row => !Array.isArray(row) || row.length !== board.length)) {
+                throw new Error("The API returned an invalid board.");
+            }
+            latestBoard = board;
+            const pixelRatio = window.devicePixelRatio || 1;
+            const size = canvas.clientWidth;
+            canvas.width = Math.round(size * pixelRatio);
+            canvas.height = Math.round(size * pixelRatio);
+            context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+            const cellSize = size / board.length;
+            board.forEach((row, x) => row.forEach((value, y) => {
+                if (!Number.isInteger(value) || colors[value] === undefined) {
+                    throw new Error("The API returned an unknown cell value.");
+                }
+                context.fillStyle = colors[value];
+                context.fillRect(y * cellSize, x * cellSize, cellSize, cellSize);
+            }));
+            context.strokeStyle = "rgb(0, 250, 0)";
+            context.lineWidth = 1;
+            for (let coordinate = 0; coordinate <= board.length; coordinate++) {
+                const position = coordinate * cellSize;
+                context.beginPath();
+                context.moveTo(position, 0);
+                context.lineTo(position, size);
+                context.moveTo(0, position);
+                context.lineTo(size, position);
+                context.stroke();
+            }
+        }
+
+        function consumeFrame(line) {
+            if (!line.trim()) return;
+            const frame = JSON.parse(line);
+            renderBoard(frame.board);
+            document.querySelector("#score").textContent = frame.score;
+            document.querySelector("#reward").textContent = Number(frame.reward).toFixed(2);
+        }
+
+        async function queryGameStream() {
+            abortController = new AbortController();
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            document.querySelector("#error").textContent = "";
+            connection.dataset.state = "live";
+            connection.textContent = "Connecting...";
+            try {
+                const response = await fetch(API_URL, { signal: abortController.signal });
+                if (!response.ok || !response.body) {
+                    throw new Error(`API request failed (${response.status}).`);
+                }
+                connection.textContent = "Streaming";
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let pending = "";
+                while (true) {
+                    const { value, done } = await reader.read();
+                    pending += decoder.decode(value || new Uint8Array(), { stream: !done });
+                    const lines = pending.split("\n");
+                    pending = lines.pop();
+                    lines.forEach(consumeFrame);
+                    if (done) break;
+                }
+                consumeFrame(pending);
+            } catch (error) {
+                if (error.name !== "AbortError") {
+                    connection.dataset.state = "error";
+                    connection.textContent = "Stream error";
+                    document.querySelector("#error").textContent = error.message;
+                }
+            } finally {
+                abortController = undefined;
+                startButton.disabled = false;
+                stopButton.disabled = true;
+                if (connection.dataset.state !== "error") {
+                    connection.dataset.state = "idle";
+                    connection.textContent = "Disconnected";
+                }
+            }
+        }
+
+        startButton.addEventListener("click", queryGameStream);
+        stopButton.addEventListener("click", () => abortController?.abort());
+        new ResizeObserver(() => { if (latestBoard) renderBoard(latestBoard); }).observe(canvas);
+    </script>
+</body>
+</html>

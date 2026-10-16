@@ -291,7 +291,8 @@ class Agent:
         if self.use_cnn:
             policy_dqn = CNN(state_shape=num_states, board_size=15, action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
         else:
-            policy_dqn = DQN(state_shape=num_states, action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
+            num_states = env.observation_space.shape[0]
+            policy_dqn = DQN(state_dim=num_states, action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
 
         policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
 
@@ -323,7 +324,8 @@ class Agent:
                 # move to new state
                 state = new_state
                 yield json.dumps(obj=({"board": board, "reward": episode_reward, "score": score})) + "\n"
-                await asyncio.sleep(0.05)
+                if terminated or truncated: await asyncio.sleep(1)
+                else: await asyncio.sleep(0.05)
 
 
     def save_graph(self, rewards_per_episode, epsilon_history, scores_per_episode):

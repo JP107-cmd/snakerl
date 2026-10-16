@@ -43,7 +43,7 @@ class SnakeEnv(gymnasium.Env):
             self.observation_space = spaces.Box(
                 low=-1.0,
                 high=1.0,
-                shape=(3 * 7 * 7 + 4 + 4 + 2,),
+                shape=(3 * 9 * 9 + 4 + 4 + 2,),
                 dtype=np.float32,
             )
         else:    
@@ -160,7 +160,7 @@ class SnakeEnv(gymnasium.Env):
                 dtype=np.float32,
             )
         else:
-            grid = self._get7x7()
+            grid = self._get9x9()
             direction_one_hot = np.eye(4, dtype=np.float32)[self.direction]
             food_direction_one_hot = np.eye(
                 4, dtype=np.float32
@@ -173,14 +173,14 @@ class SnakeEnv(gymnasium.Env):
                 normalized_food_direction
             ]).astype(np.float32)
 
-    def _get7x7(self):
-        observation = np.zeros((3, 7, 7), dtype=np.float32)
+    def _get9x9(self):
+        observation = np.zeros((3, 9, 9), dtype=np.float32)
 
         for local_x in range(7):
             for local_y in range(7):
 
-                x = self.agent_head_x + local_x - 3
-                y = self.agent_head_y + local_y - 3
+                x = self.agent_head_x + local_x - 4
+                y = self.agent_head_y + local_y - 4
                 outside = (
                     x < 0 or x >= self.size or 
                     y < 0 or y >= self.size
