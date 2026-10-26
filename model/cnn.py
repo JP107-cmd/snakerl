@@ -4,7 +4,7 @@ from torch import nn
 
 class CNN(nn.Module):
 
-    def __init__(self, state_shape, board_size, action_dim, hidden_layer_dim=256):
+    def __init__(self, state_shape, board_size, action_dim, hidden_layer_dim=64):
         super().__init__()
 
         self.board_size = board_size

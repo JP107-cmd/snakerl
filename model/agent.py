@@ -218,7 +218,7 @@ class Agent:
             )
             epsilon_history.append(epsilon)
 
-            if len(memory) >= self.mini_batch_size and vector_step % 10 == 0:
+            if len(memory) >= self.mini_batch_size and vector_step:
                 mini_batch = memory.sample(self.mini_batch_size)
                 self.optimize(mini_batch, policy_dqn, target_dqn)
 
@@ -240,7 +240,7 @@ class Agent:
                 last_graph_update_time = current_time
 
     def test(self, render=False):
-        env = gymnasium.make(self.env_id, render_mode="human" if render else "", **self.env_make_params, cnn=self.use_cnn, size=15)
+        env = gymnasium.make(self.env_id, render_mode="human" if render else None, **self.env_make_params, cnn=self.use_cnn, size=15)
 
         num_states = env.observation_space.shape
         num_actions = env.action_space.n
@@ -248,7 +248,7 @@ class Agent:
         if self.use_cnn:
             policy_dqn = CNN(state_shape=num_states, board_size=15, action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
         else:
-            policy_dqn = DQN(state_shape=num_states, action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
+            policy_dqn = DQN(state_dim=num_states[0], action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
 
         policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
 

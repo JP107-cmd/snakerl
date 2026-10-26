@@ -176,8 +176,8 @@ class SnakeEnv(gymnasium.Env):
     def _get9x9(self):
         observation = np.zeros((3, 9, 9), dtype=np.float32)
 
-        for local_x in range(7):
-            for local_y in range(7):
+        for local_x in range(9):
+            for local_y in range(9):
 
                 x = self.agent_head_x + local_x - 4
                 y = self.agent_head_y + local_y - 4
