@@ -15,5 +15,10 @@ app.add_middleware(
 
 @app.get("/cnn")
 async def run_cnn():
+    agent = Agent(hyperparameter_set="snakev3-2", use_cnn=True)
+    return StreamingResponse(agent.display(), media_type="application/x-ndjson")
+
+@app.get("/mlp")
+async def run_cnn():
     agent = Agent(hyperparameter_set="snakev2-1", use_cnn=False)
     return StreamingResponse(agent.display(), media_type="application/x-ndjson")
