@@ -111,14 +111,40 @@ class SnakeEnv(gymnasium.Env):
             return 1 if dy > 0 else 3
         return 0
 
+    def _relative_food_direction(self):
+        """Return the food direction in the snake-relative frame.
+
+        In this frame, 0 is forward, 1 is right, 2 is backward, and 3 is
+        left. This matches the rotated local observations, where forward is
+        always at the top of the grid.
+        """
+        return (self._food_direction() - self.direction) % 4
+
     def _food_vector(self):
 
         if self.food_x is None:
             return np.zeros(2, dtype=np.float32)
+ 
+        dx = self.food_x - self.agent_head_x
+        dy = self.food_y - self.agent_head_y
 
-        dx = (self.food_x-self.agent_head_x)/(self.size-1)
-        dy = (self.food_y-self.agent_head_y)/(self.size-1)
-        return np.array([dx, dy], dtype=np.float32)
+        # Convert world coordinates to the snake-relative frame. The first
+        # component is forward/backward and the second is right/left.
+        direction_vector = np.array(self.DIRECTION_VECTORS[self.direction])
+        right_vector = np.array(
+            self.DIRECTION_VECTORS[(self.direction + 1) % 4]
+        )
+        forward = np.dot((dx, dy), direction_vector)
+        right = np.dot((dx, dy), right_vector)
+
+        return np.array(
+            [forward / (self.size - 1), right / (self.size - 1)],
+            dtype=np.float32,
+        )
+
+    def _relative_state(self):
+        """Rotate the board so the snake is always facing upward."""
+        return np.rot90(self.state, k=self.direction, axes=(0, 1))
 
     def _danger(self):
         relative_directions = (
@@ -144,10 +170,11 @@ class SnakeEnv(gymnasium.Env):
     def _get_obs(self):
         if self.cnn:
             direction_one_hot = np.eye(4, dtype=np.float32)[self.direction]
+            relative_state = self._relative_state()
             grid = np.stack([
-                self.state == 2,
-                self.state == 1,
-                self.state == 3,
+                relative_state == 2,
+                relative_state == 1,
+                relative_state == 3,
             ]).astype(np.float32)
             observation = np.concatenate([
                 grid.flatten(),
@@ -164,7 +191,7 @@ class SnakeEnv(gymnasium.Env):
             direction_one_hot = np.eye(4, dtype=np.float32)[self.direction]
             food_direction_one_hot = np.eye(
                 4, dtype=np.float32
-            )[self._food_direction()]
+            )[self._relative_food_direction()]
             normalized_food_direction = self._food_vector()
             return np.concatenate([
                 grid.flatten(),
@@ -196,7 +223,12 @@ class SnakeEnv(gymnasium.Env):
                 if x == self.food_x and y == self.food_y:
                     observation[1, local_x, local_y] = 1.0
 
-        return observation
+        # Rotate the local view around its centre so forward is always up.
+        return np.rot90(
+            observation,
+            k=self.direction,
+            axes=(1, 2),
+        ).copy()
 
     def _get_info(self):
         return {
