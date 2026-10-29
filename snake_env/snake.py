@@ -43,7 +43,7 @@ class SnakeEnv(gymnasium.Env):
             self.observation_space = spaces.Box(
                 low=-1.0,
                 high=1.0,
-                shape=(3 * 9 * 9 + 4 + 4 + 2,),
+                shape=(4 * 9 * 9 + 4 + 4 + 2 + 2 + 2,),
                 dtype=np.float32,
             )
         else:    
@@ -142,6 +142,29 @@ class SnakeEnv(gymnasium.Env):
             dtype=np.float32,
         )
 
+    def _absolute_food_position(self):
+        """Return the food's normalized row and column on the board."""
+        if self.food_x is None:
+            return np.zeros(2, dtype=np.float32)
+
+        return np.array(
+            [
+                self.food_x / (self.size - 1),
+                self.food_y / (self.size - 1),
+            ],
+            dtype=np.float32,
+        )
+
+    def _head_position(self):
+        """Return the head's normalized row and column on the board."""
+        return np.array(
+            [
+                self.agent_head_x / (self.size - 1),
+                self.agent_head_y / (self.size - 1),
+            ],
+            dtype=np.float32,
+        )
+
     def _relative_state(self):
         """Rotate the board so the snake is always facing upward."""
         return np.rot90(self.state, k=self.direction, axes=(0, 1))
@@ -197,11 +220,13 @@ class SnakeEnv(gymnasium.Env):
                 grid.flatten(),
                 direction_one_hot,
                 food_direction_one_hot,
-                normalized_food_direction
+                normalized_food_direction,
+                self._absolute_food_position(),
+                self._head_position(),
             ]).astype(np.float32)
 
     def _get9x9(self):
-        observation = np.zeros((3, 9, 9), dtype=np.float32)
+        observation = np.zeros((4, 9, 9), dtype=np.float32)
 
         for local_x in range(9):
             for local_y in range(9):
@@ -214,14 +239,16 @@ class SnakeEnv(gymnasium.Env):
                 )
 
                 if outside:
-                    observation[2, local_x, local_y] = 1.0
+                    observation[3, local_x, local_y] = 1.0
                     continue
 
-                if [x, y] in self.body:
+                if x == self.agent_head_x and y == self.agent_head_y:
                     observation[0, local_x, local_y] = 1.0
+                elif [x, y] in self.body:
+                    observation[1, local_x, local_y] = 1.0
 
                 if x == self.food_x and y == self.food_y:
-                    observation[1, local_x, local_y] = 1.0
+                    observation[2, local_x, local_y] = 1.0
 
         # Rotate the local view around its centre so forward is always up.
         return np.rot90(
