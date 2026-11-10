@@ -395,7 +395,7 @@ class Agent:
             num_states = env.observation_space.shape[0]
             policy_dqn = DQN(state_dim=num_states, action_dim=num_actions, hidden_layer_dim=self.nodes).to(device)
 
-        policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
+        policy_dqn.load_state_dict(torch.load(self.MODEL_FILE, map_location="cpu"))
 
         for episode in itertools.count():
 
