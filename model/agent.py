@@ -51,6 +51,11 @@ class Agent:
 
         self.env_id = hyperparameters["env_id"]
         self.replay_memory_size = hyperparameters["replay_memory_size"]
+        # Collect a reasonably diverse replay buffer before making the first
+        # gradient update. This is measured in transitions, not vector steps.
+        self.replay_warmup_steps = hyperparameters.get(
+            "replay_warmup_steps", 10000
+        )
         self.mini_batch_size = hyperparameters["mini_batch_size"]
         self.epsilon_init = hyperparameters["epsilon_init"]
         self.epsilon_decay = hyperparameters["epsilon_decay"]
@@ -218,7 +223,10 @@ class Agent:
             )
             epsilon_history.append(epsilon)
 
-            if len(memory) >= self.mini_batch_size and vector_step:
+            if (
+                len(memory) >= max(self.replay_warmup_steps, self.mini_batch_size)
+                and vector_step
+            ):
                 mini_batch = memory.sample(self.mini_batch_size)
                 self.optimize(mini_batch, policy_dqn, target_dqn)
 
