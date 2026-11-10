@@ -36,7 +36,7 @@ class SnakeEnv(gymnasium.Env):
             self.observation_space = spaces.Box(
                 low=0.0,
                 high=1.0,
-                shape=(3 * self.size * self.size + 4,),
+                shape=(4 * self.size * self.size + 4 + 2 + 2,),
                 dtype=np.float32,
             )
         elif expanded_obs_space:
@@ -169,6 +169,15 @@ class SnakeEnv(gymnasium.Env):
         """Rotate the board so the snake is always facing upward."""
         return np.rot90(self.state, k=self.direction, axes=(0, 1))
 
+    def _relative_walls(self):
+        """Return a rotated boundary channel for the full-board view."""
+        walls = np.zeros((self.size, self.size), dtype=np.float32)
+        walls[0, :] = 1.0
+        walls[-1, :] = 1.0
+        walls[:, 0] = 1.0
+        walls[:, -1] = 1.0
+        return np.rot90(walls, k=self.direction, axes=(0, 1))
+
     def _danger(self):
         relative_directions = (
             (self.direction - 1) % 4,  # left
@@ -198,10 +207,13 @@ class SnakeEnv(gymnasium.Env):
                 relative_state == 2,
                 relative_state == 1,
                 relative_state == 3,
+                self._relative_walls(),
             ]).astype(np.float32)
             observation = np.concatenate([
                 grid.flatten(),
                 direction_one_hot,
+                self._absolute_food_position(),
+                self._head_position(),
             ])
             return observation.astype(np.float32)
         elif not self.expanded_obs_space:
@@ -333,7 +345,7 @@ class SnakeEnv(gymnasium.Env):
         self._rebuild_state()
 
         terminated = self.won or not has_empty_cell
-        truncated = (self.steps >= self.max_steps or self.steps_since_last_food > 200) and not terminated
+        truncated = (self.steps >= self.max_steps or self.steps_since_last_food > 300) and not terminated
 
         if self.render_mode == "human":
             self.render()

@@ -290,6 +290,99 @@ class Agent:
             with open(self.LOG_FILE, 'a') as file:
                 file.write(log_message + '\n')
 
+    def evaluate(self, episodes=50, seed=None):
+        """Evaluate a checkpoint over a finite set of greedy episodes."""
+        if episodes <= 0:
+            raise ValueError("episodes must be greater than zero")
+
+        env = gymnasium.make(
+            self.env_id,
+            render_mode=None,
+            **self.env_make_params,
+            cnn=self.use_cnn,
+            size=15,
+        )
+
+        observation_shape = env.observation_space.shape
+        num_actions = env.action_space.n
+        if self.use_cnn:
+            policy_dqn = CNN(
+                state_shape=observation_shape,
+                board_size=15,
+                action_dim=num_actions,
+                hidden_layer_dim=self.nodes,
+            ).to(device)
+        else:
+            policy_dqn = DQN(
+                state_dim=observation_shape[0],
+                action_dim=num_actions,
+                hidden_layer_dim=self.nodes,
+            ).to(device)
+
+        policy_dqn.load_state_dict(
+            torch.load(self.MODEL_FILE, map_location=device)
+        )
+        policy_dqn.eval()
+
+        scores = []
+        rewards = []
+        lengths = []
+        truncated_episodes = 0
+
+        with torch.inference_mode():
+            for episode in range(episodes):
+                episode_seed = None if seed is None else seed + episode
+                state, _ = env.reset(seed=episode_seed)
+                episode_reward = 0.0
+                episode_length = 0
+                terminated = False
+                truncated = False
+
+                while not (terminated or truncated):
+                    state_tensor = torch.as_tensor(
+                        state,
+                        dtype=torch.float32,
+                        device=device,
+                    ).unsqueeze(0)
+                    action = policy_dqn(state_tensor).argmax(dim=1).item()
+                    state, reward, terminated, truncated, info = env.step(action)
+                    episode_reward += reward
+                    episode_length += 1
+
+                scores.append(float(info.get("score", 0)))
+                rewards.append(float(episode_reward))
+                lengths.append(episode_length)
+                truncated_episodes += int(truncated)
+
+        env.close()
+
+        scores_array = np.asarray(scores, dtype=np.float32)
+        rewards_array = np.asarray(rewards, dtype=np.float32)
+        lengths_array = np.asarray(lengths, dtype=np.float32)
+        metrics = {
+            "episodes": episodes,
+            "mean_score": float(np.mean(scores_array)),
+            "median_score": float(np.median(scores_array)),
+            "p90_score": float(np.percentile(scores_array, 90)),
+            "max_score": float(np.max(scores_array)),
+            "std_score": float(np.std(scores_array)),
+            "mean_reward": float(np.mean(rewards_array)),
+            "mean_episode_length": float(np.mean(lengths_array)),
+            "truncated_episodes": truncated_episodes,
+        }
+
+        print(f"Evaluation over {episodes} episodes:")
+        print(f"  mean score:           {metrics['mean_score']:.2f}")
+        print(f"  median score:         {metrics['median_score']:.2f}")
+        print(f"  90th percentile:      {metrics['p90_score']:.2f}")
+        print(f"  maximum score:        {metrics['max_score']:.2f}")
+        print(f"  score standard dev.:  {metrics['std_score']:.2f}")
+        print(f"  mean reward:          {metrics['mean_reward']:.2f}")
+        print(f"  mean episode length:  {metrics['mean_episode_length']:.1f}")
+        print(f"  truncated episodes:   {truncated_episodes}")
+
+        return metrics
+
     async def display(self):
         env = gymnasium.make(self.env_id, **self.env_make_params, cnn=self.use_cnn, size=15)
 
@@ -406,6 +499,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train or test model. ")
     parser.add_argument('hyperparameters', help=' ')
     parser.add_argument("--train", help="Training mode", action="store_true")
+    parser.add_argument("--eval", help="Evaluate over finite episodes", action="store_true")
+    parser.add_argument("--episodes", type=int, default=50, help="Evaluation episode count")
+    parser.add_argument("--seed", type=int, default=1000, help="Evaluation seed")
     parser.add_argument("--cnn", help="Use CNN", action="store_true")
     args = parser.parse_args()
 
@@ -416,5 +512,7 @@ if __name__ == "__main__":
 
     if args.train:
         dql.train(render=False)
+    elif args.eval:
+        dql.evaluate(episodes=args.episodes, seed=args.seed)
     else:
         dql.test(render=True)
