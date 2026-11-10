@@ -1,5 +1,6 @@
 /runs/*
-!/runs/snakebest.pt
+!/runs/snakev2-1.pt
+!/runs/snakev3-2_cnn.pt
 /build
 /.vscode
 **/__pycache__

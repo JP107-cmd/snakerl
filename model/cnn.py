@@ -16,8 +16,16 @@ class CNN(nn.Module):
         self.features = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            # Preserve coarse spatial layout without flattening the full
+            # 15x15 feature map into a very large linear layer.
+            # The preceding strided convolutions produce a 4x4 map for the
+            # 15x15 board. A 2x2 target divides evenly and is supported by
+            # Apple's MPS backend.
+            nn.AdaptiveAvgPool2d((2, 2)),
         )
 
         with torch.no_grad():
