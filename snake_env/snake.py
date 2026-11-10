@@ -1,6 +1,5 @@
 import gymnasium
 import numpy as np
-import pygame
 from gymnasium import spaces
 
 
@@ -25,6 +24,9 @@ class SnakeEnv(gymnasium.Env):
             raise ValueError("size must be at least 5")
         if render_mode not in self.metadata["render_modes"] + [None]:
             raise ValueError(f"Unsupported render mode: {render_mode}")
+        if render_mode == "human":
+            import pygame
+            self.pygame = pygame
 
         self.cnn = cnn
         self.size = size
@@ -357,12 +359,12 @@ class SnakeEnv(gymnasium.Env):
             return None
 
         if self.window is None:
-            pygame.init()
-            self.window = pygame.display.set_mode(
+            self.pygame.init()
+            self.window = self.pygame.display.set_mode(
                 (self.window_size, self.window_size)
             )
-            pygame.display.set_caption("Snake")
-            self.clock = pygame.time.Clock()
+            self.pygame.display.set_caption("Snake")
+            self.clock = self.pygame.time.Clock()
 
         cell_size = self.window_size / self.size
         colors = {
@@ -376,24 +378,24 @@ class SnakeEnv(gymnasium.Env):
         for x in range(self.size):
             for y in range(self.size):
                 value = int(self.state[x, y])
-                rect = pygame.Rect(
+                rect = self.pygame.Rect(
                     y * cell_size,
                     x * cell_size,
                     cell_size,
                     cell_size,
                 )
-                pygame.draw.rect(self.window, colors[value], rect)
+                self.pygame.draw.rect(self.window, colors[value], rect)
 
         for coordinate in range(self.size + 1):
             position = coordinate * cell_size
-            pygame.draw.line(
+            self.pygame.draw.line(
                 self.window,
                 (0, 250, 0),
                 (0, position),
                 (self.window_size, position),
                 width=1,
             )
-            pygame.draw.line(
+            self.pygame.draw.line(
                 self.window,
                 (0, 250, 0),
                 (position, 0),
@@ -401,12 +403,12 @@ class SnakeEnv(gymnasium.Env):
                 width=1,
             )
 
-        font = pygame.font.SysFont("Arial", 24)
+        font = self.pygame.font.SysFont("Arial", 24)
         score_surface = font.render(f"Score: {self.score}", True, "white")
         self.window.blit(score_surface, score_surface.get_rect())
 
-        pygame.event.pump()
-        pygame.display.flip()
+        self.pygame.event.pump()
+        self.pygame.display.flip()
         self.clock.tick(self.metadata["render_fps"])
 
     def get_state(self):
@@ -414,7 +416,7 @@ class SnakeEnv(gymnasium.Env):
 
     def close(self):
         if self.window is not None:
-            pygame.quit()
+            self.pygame.quit()
             self.window = None
             self.clock = None
 
